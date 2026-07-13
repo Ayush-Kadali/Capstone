@@ -1,0 +1,57 @@
+# macOS and editor state
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# C/C++ and CMake build output
+/build/
+/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Local profiling, tracing, and coverage output
+/artifacts/
+/coverage/
+/profiles/
+/traces/
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+*.lcov
+
+# Local model/data downloads and temporary files
+/models/
+/datasets/
+/tmp/
+*.log
+*.tmp
+
+# Locally downloaded literature. The manifest and review remain versioned.
+/research/literature_review/papers/
+/research/literature_review/extracted/
