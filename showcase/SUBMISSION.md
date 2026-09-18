@@ -2,7 +2,8 @@
 
 **Team:** Boundary Conditions  
 **SegFault theme:** Explainable compilers  
-**Version:** 0.1 prototype, September 2026
+**Version:** 0.1 prototype, September 2026  
+**Repository:** https://github.com/Ayush-Kadali/Capstone
 
 ## Problem
 
@@ -59,6 +60,24 @@ A reproducible matrix also checks chain, shared-intermediate, and residual-style
 
 ONNX Runtime already uses capability-based execution providers and provides I/O binding to manage device residency. MLIR already supports before/after pass instrumentation. IREE integrates compilation, scheduling and execution across real backends. Our prototype exposes a restricted version of these responsibilities in one reproducible environment, so a user can inspect how a changed assumption propagates from placement to copies and execution. We claim an inspectable implementation and controlled experiments, not a new placement algorithm or a replacement for those systems. Source links and specific comparisons are in [Engineering notes](ENGINEERING_NOTES.md).
 
+## Why the Explainable compilers theme
+
+The theme asks teams to make compiler decisions legible to the people using them. Our contribution is that legibility: every pass records its input and output representation, the change, the rule that caused it, and the downstream consequence; command lineage survives fusion; and the plan that is explained is the plan that was executed and numerically checked. The AI graph is the subject matter. The explanation machinery is what we built and what we ask to be evaluated on.
+
+## Relation to the official problem statements
+
+The GPU profitability statement (P04) starts from the same observation we do: an offload can be safe and still unprofitable because of transfer, launch and synchronization overheads. It asks for an ML predictor over OpenMP/OpenACC code regions, trained on labelled examples and validated against measured GPU speedups. PlacementLens has no learned model, no source-loop analysis and no GPU measurements, so it is not an implementation of that statement and is not submitted as one.
+
+| | P04 predictor | PlacementLens |
+|---|---|---|
+| Unit of decision | One loop or code region, yes/no | Every operator of a graph, jointly |
+| Method | Supervised ML on static and profiled features | Deterministic passes and exhaustive search of a declared analytical model |
+| Output | A prediction with feature-based rationale | An executable command plan with per-pass records |
+| Explanation | Which features drove the model | Which rule fired, what IR changed, what it forced downstream |
+| Evidence | Correlation with measured GPU speedup | Functional correctness of every feasible plan; no speed claim |
+
+We share the intent of the pass-analysis statements (P01, P02), per-pass visibility and cascading effects, but operate on our own small graph pipeline without LLVM or MLIR. A learned or calibrated cost model could later replace our constants without changing the passes or the report.
+
 ## Current boundaries
 
 The frontend accepts a small `.plg` format, FP32 contiguous rank-two tensors, one graph output, and at most 12 operations. Execution is synchronous. Buffers remain allocated until run completion. There is no real-device backend, calibrated hardware cost profile, empirical timing oracle, robust policy, automatic recovery, ONNX importer, or concurrent runtime yet.
@@ -73,9 +92,11 @@ From the repository root:
 
 ```sh
 bash scripts/run_demo.sh
-build/placementlens explain --graph examples/fragmented.plg --report artifacts/segfault/run-report.md
+build/placementlens explain --graph examples/fragmented.plg \
+    --report artifacts/segfault/run-report.md
 build/placementlens verify --graph examples/branched.plg --relu-supported
-python3 scripts/show_passes.py artifacts/segfault/fragmented.json --policy maximal --pass-name InsertTransfersPass
+python3 scripts/show_passes.py artifacts/segfault/fragmented.json \
+    --policy maximal --pass-name InsertTransfersPass
 ```
 
 Requirements: C++17 compiler, CMake 3.16+, Python 3 for full checks. No GPU or model download required. The current verified platform is macOS arm64 with AppleClang 17.
