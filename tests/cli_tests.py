@@ -71,4 +71,27 @@ with tempfile.TemporaryDirectory() as td:
         assert {r["placement"] for r in verified["results"]} == {r["placement"] for r in verified["search"]["ranked_feasible"]}
         assert all(r["correct"] and r["output"] == [1,14,7,1] for r in verified["results"])
     invoke("verify", *base, "--trace", trace, expected=1)
+    markdown = pathlib.Path(td)/"run.md"
+    for options in ([], ["--relu-supported", "--fuse"], ["--device-bytes", "80"], ["--boundary-ms", "5"]):
+        result = invoke("explain", *base, *options, "--report", markdown, "--json", report, "--trace", trace)
+        explanation = markdown.read_text()
+        evidence = json.loads(report.read_text())
+        assert result.stdout.startswith(explanation)
+        assert "## Compiler decisions" in explanation and "## Selected executable plan" in explanation
+        assert "shape" in explanation and "hardware-calibrated" in explanation
+        assert all(r["correct"] for r in evidence["results"])
+        assert "| cost | " + evidence["results"][-1]["placement"] in explanation
+        if options == []:
+            assert "bias (Add): virtual-device -> CPU" in explanation
+            assert "Copy bytes: 112 -> 64" in explanation
+            assert "Total modeled cost reduction: 2.550048 ms" in explanation
+        if "--fuse" in options:
+            assert "FUSE mm + activation" in explanation
+            assert "mm activation" in explanation
+        if "--device-bytes" in options:
+            assert "Maximal placement is infeasible" in explanation
+    invoke("explain", *base, "--report", root/"examples/fragmented.plg", expected=1)
+    invoke("explain", *base, "--report", report, "--json", report, expected=1)
+    invoke("run", *base, "--report", markdown, expected=1)
+    invoke("explain", "--help")
 print(f"PASS: {checks} CLI invocations plus report/trace contracts")

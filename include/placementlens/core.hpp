@@ -119,4 +119,7 @@ std::string report_json(const Graph& source, const Graph& compiled, const Config
                         const std::vector<Plan>& plans, const std::vector<Run>& runs,
                         const SearchResult& search, const std::vector<PassRecord>& frontend_passes = {});
 std::string trace_json(const Run& run);
+std::string explain_report(const Graph& source, const Graph& compiled, const Config& config,
+                           const std::vector<Plan>& plans, const std::vector<Run>& runs,
+                           const SearchResult& search, const std::vector<PassRecord>& frontend_passes);
 }

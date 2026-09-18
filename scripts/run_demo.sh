@@ -22,4 +22,6 @@ fi
 cat artifacts/segfault/rejection.txt
 printf '\nWhy the fragmented placements differ:\n'
 python3 scripts/explain_run.py artifacts/segfault/fragmented.json
+printf '\nSaving the full explanation report:\n'
+build/placementlens explain --graph examples/fragmented.plg --report artifacts/segfault/run-report.md --json artifacts/segfault/explained.json > artifacts/segfault/explained.txt
 printf '\nDemo complete. Reports, real CLI output and host trace: artifacts/segfault/\n'
