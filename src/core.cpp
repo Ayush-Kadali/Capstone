@@ -31,6 +31,8 @@ Shape result_shape(Op op, const std::vector<Shape>& inputs) {
     require(op == Op::MatMul || op == Op::MatMulRelu, "E_OPCODE: unsupported opcode");
     require(inputs[0].cols == inputs[1].rows, "E_SHAPE: MatMul inner dimensions differ");
     Shape out{inputs[0].rows, inputs[1].cols};
+    // elements() throws if the result is too big. We only want that check here,
+    // not the number, so the value is thrown away.
     (void)out.elements();
     return out;
 }
@@ -345,6 +347,7 @@ TransferIR insert_transfers(const Graph& graph, const std::vector<Backend>& plac
     for (std::size_t i = 0; i < graph.nodes.size(); ++i) {
         const auto& n = graph.nodes[i];
         const auto b = placement[i];
+        // name() throws on a backend value that is not Cpu or Device. Used as a check.
         (void)name(b);
         if (b == Backend::Device) {
             auto cap = capability(n, graph, config);
