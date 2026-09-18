@@ -55,3 +55,7 @@ Testing/
 # Locally downloaded literature. The manifest and review remain versioned.
 /research/literature_review/papers/
 /research/literature_review/extracted/
+
+# Local Codex integrations and third-party tool checkouts
+/.codex/
+/tools/excalidraw-mcp/
