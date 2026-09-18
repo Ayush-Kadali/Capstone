@@ -20,4 +20,6 @@ if build/placementlens run --graph examples/invalid_shape.plg > artifacts/segfau
     exit 1
 fi
 cat artifacts/segfault/rejection.txt
+printf '\nWhy the fragmented placements differ:\n'
+python3 scripts/explain_run.py artifacts/segfault/fragmented.json
 printf '\nDemo complete. Reports, real CLI output and host trace: artifacts/segfault/\n'

@@ -37,6 +37,12 @@ with tempfile.TemporaryDirectory() as td:
         assert "ALLOC" in result["passes"][3]["output_ir"]
     assert data["frontend_passes"][0]["name"] == "ValidateGraphPass"
     assert "tensor A f32" in data["frontend_passes"][0]["input_ir"]
+    explanation = subprocess.run([sys.executable, str(root/"scripts/explain_run.py"), str(report)],
+                                 capture_output=True, text=True, timeout=30)
+    assert explanation.returncode == 0, explanation.stderr
+    assert "bias (Add): device -> CPU" in explanation.stdout
+    assert "Removed copy: H:R -> D:R" in explanation.stdout
+    assert "Model cost difference: 2.5500 ms" in explanation.stdout
     invoke("demo", *base, "--relu-supported", "--fuse", "--json", report)
     fused = json.loads(report.read_text())
     assert len(fused["compiled_graph"]["nodes"]) == 2
@@ -56,4 +62,13 @@ with tempfile.TemporaryDirectory() as td:
     invoke("run", *base, "--json", root/"examples/fragmented.plg", expected=1)
     invoke("run", *base, "--json", root/"examples/../examples/fragmented.plg", expected=1)
     invoke("--help")
+    for options in ([], ["--relu-supported"], ["--relu-supported", "--fuse"], ["--device-bytes", "80"]):
+        result = invoke("verify", *base, *options, "--json", report)
+        verified = json.loads(report.read_text())
+        assert "numerical failures" in result.stdout
+        assert len(verified["results"]) == len(verified["search"]["ranked_feasible"])
+        assert len(verified["results"]) + verified["search"]["infeasible"] == 2 ** len(verified["compiled_graph"]["nodes"])
+        assert {r["placement"] for r in verified["results"]} == {r["placement"] for r in verified["search"]["ranked_feasible"]}
+        assert all(r["correct"] and r["output"] == [1,14,7,1] for r in verified["results"])
+    invoke("verify", *base, "--trace", trace, expected=1)
 print(f"PASS: {checks} CLI invocations plus report/trace contracts")

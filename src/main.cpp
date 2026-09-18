@@ -10,12 +10,13 @@
 namespace {
 const char* help = R"(PlacementLens 0.1 | Explainable hardware-aware graph placement
 
-Usage: placementlens <inspect|compile|compare|run|demo> --graph FILE [options]
+Usage: placementlens <inspect|compile|compare|run|verify|demo> --graph FILE [options]
 
   inspect                 Show typed graph and capability decisions
   compile                 Show graph passes and explicit command plan
   compare                 Execute CPU, maximal, and modeled-optimal plans
   run                     Execute one selected policy and check correctness
+  verify                  Execute every feasible placement against the reference
   demo                    Compare policies and show winning command plan
 
 Options:
@@ -50,7 +51,7 @@ int main(int argc, char** argv) {
             std::cout << help; return 0;
         }
         const std::string action = argv[1];
-        if (action != "inspect" && action != "compile" && action != "compare" && action != "run" && action != "demo")
+        if (action != "inspect" && action != "compile" && action != "compare" && action != "run" && action != "verify" && action != "demo")
             throw std::runtime_error("E_OPTION: unknown command; use --help");
         pl::Config config;
         bool fusion = false;
@@ -105,9 +106,7 @@ int main(int argc, char** argv) {
              {fusion ? "Require a single-use non-output intermediate and target ReLU support" : "Optional pass disabled"},
              {std::to_string(source.nodes.size()) + " source nodes -> " + std::to_string(graph.nodes.size()) + " compiled nodes"}}
         };
-        std::cout << "\nPLACEMENTLENS  /  Boundary Conditions\n"
-                     "Explainable compiler decisions, executable command plans\n"
-                     "---------------------------------------------------------\n"
+        std::cout << "\nPlacementLens | " << action << " | " << graph_path << '\n'
                   << pl::graph_text(source);
         for (const auto& remark : passes.remarks) std::cout << "  " << remark << '\n';
         if (graph.nodes.size() != source.nodes.size()) std::cout << pl::graph_text(graph);
@@ -121,6 +120,30 @@ int main(int argc, char** argv) {
             return 0;
         }
         const auto search = pl::enumerate(graph, config);
+        if (action == "verify") {
+            if (!trace_path.empty()) throw std::runtime_error("E_OPTION: use run for a single-plan trace; verify exports all results with --json");
+            auto candidates = search.plans;
+            std::vector<pl::Run> verified;
+            std::size_t failures = 0, commands = 0;
+            for (auto& candidate : candidates) {
+                candidate.policy = "enumerated";
+                verified.push_back(pl::execute(source, candidate, config));
+                commands += candidate.commands.size();
+                if (!verified.back().correct) {
+                    ++failures;
+                    std::cout << "FAIL " << pl::placement_name(candidate.placement)
+                              << " max_abs_error=" << verified.back().max_abs_error << '\n';
+                }
+            }
+            std::cout << "\nVerified " << candidates.size() << " feasible placements, " << commands
+                      << " commands; " << failures << " numerical failures.\n"
+                      << search.infeasible << " assignments rejected by capability or retained-memory checks.\n"
+                      << "Every feasible plan was executed against the original graph reference.\n"
+                      << "This checks functional execution, not accelerator performance.\n";
+            if (!json_path.empty()) save(json_path, pl::report_json(source, graph, config, passes.remarks,
+                                                                   candidates, verified, search, frontend_passes));
+            return failures == 0 ? 0 : 2;
+        }
         std::vector<pl::Plan> plans;
         if (action == "compare" || action == "demo") {
             for (const std::string p : {"cpu", "maximal", "cost"}) {
@@ -150,7 +173,7 @@ int main(int argc, char** argv) {
         for (const auto& p : plans) {
             runs.push_back(pl::execute(source, p, config));
             const auto& r = runs.back(); correct = correct && r.correct;
-            std::cout << std::left << std::setw(13) << p.policy << std::setw(10) << pl::placement_name(p.placement)
+            std::cout << std::left << std::setw(13) << p.policy << std::setw(14) << pl::placement_name(p.placement)
                       << std::right << std::fixed << std::setprecision(4) << std::setw(8) << p.modeled_ms
                       << std::setw(8) << p.h2d_bytes << " / " << std::setw(4) << p.d2h_bytes
                       << std::setw(11) << p.islands << "  " << (r.correct ? "PASS" : "FAIL") << '\n';
@@ -162,8 +185,11 @@ int main(int argc, char** argv) {
                   << "No automatic dtype conversion or runtime replanning is performed.\n";
         if (action == "demo") std::cout << '\n' << pl::plan_text(plans.back());
         std::cout << "\nOutput (row-major): [";
-        for (std::size_t i = 0; i < runs.back().output.values.size(); ++i)
+        const auto output_count = runs.back().output.values.size();
+        const auto preview_count = output_count < 16 ? output_count : std::size_t{16};
+        for (std::size_t i = 0; i < preview_count; ++i)
             std::cout << (i ? ", " : "") << runs.back().output.values[i];
+        if (preview_count < output_count) std::cout << ", ... (" << output_count << " values; full output in --json)";
         std::cout << "]\nReference: original graph evaluated independently; atol=rtol=1e-5.\n"
                      "MODEL ms is synthetic. This is NOT a measured accelerator speedup.\n"
                      "Actual host execution time for last plan: " << runs.back().host_ms << " ms.\n";

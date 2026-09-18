@@ -38,7 +38,8 @@ std::string handle(Backend b, const std::string& tensor) {
     return (b == Backend::Cpu ? "H:" : "D:") + tensor;
 }
 double compute_cost(Op op, Backend b) {
-    // Deliberately illustrative per-op constants, not calibrated performance estimates.
+    // Example costs only. A bigger matrix still gets the same compute cost here.
+    // Good enough to test placement decisions, not to predict a real GPU.
     switch (op) {
         case Op::MatMul: return b == Backend::Cpu ? 6.0 : 1.0;
         case Op::Relu: return b == Backend::Cpu ? 1.0 : 0.1;
@@ -254,6 +255,7 @@ PassResult fuse_matmul_relu(const Graph& graph, const Config& config) {
         });
         if (consumer == graph.nodes.end()) { nodes.push_back(n); continue; }
         std::string reason;
+        // Another consumer may need the values BEFORE ReLU. Don't remove them.
         if (uses[n.output] != 1) reason = "MatMul output has multiple uses";
         else if (graph.output == n.output) reason = "MatMul output is externally observable";
         else if (!config.relu_supported) reason = "configured target lacks ReLU support";
@@ -323,10 +325,12 @@ TransferIR insert_transfers(const Graph& graph, const std::vector<Backend>& plac
     };
     auto ensure = [&](Backend b, const std::string& t) {
         const auto destination = handle(b, t);
+        // Inputs can be shared by several nodes. Copy once, keep that copy.
         if (valid.count(destination)) return;
         const auto other = b == Backend::Cpu ? Backend::Device : Backend::Cpu;
         const auto source = handle(other, t);
         require(valid.count(source) != 0, "E_LOWER: input has no valid resident copy");
+        // The host must see completed device work before it reads the result.
         if (b == Backend::Cpu) sync();
         TransferStep cmd;
         cmd.kind = Kind::Copy; cmd.backend = b; cmd.output = destination;
@@ -353,6 +357,8 @@ TransferIR insert_transfers(const Graph& graph, const std::vector<Backend>& plac
         for (const auto& in : n.inputs) cmd.inputs.push_back(handle(b, in));
         cmd.modeled_ms = compute_cost(n.op, b);
         if (b == Backend::Device) {
+            // One charge per consecutive device run is a model assumption.
+            // We do not generate one real GPU kernel for the whole run.
             if (previous != Backend::Device) { ++plan.islands; cmd.modeled_ms += config.launch_ms; }
             pending = true;
         }
@@ -406,6 +412,8 @@ Plan lower(const Graph& graph, const std::vector<Backend>& placement, const Conf
             allocation.kind = Kind::Allocate; allocation.backend = step.backend;
             allocation.output = step.output; allocation.shape = step.shape;
             if (step.backend == Backend::Device) {
+                // Each op may fit alone while the complete plan does not.
+                // No frees yet: every device allocation stays until run end.
                 plan.peak_device_bytes += step.shape.bytes();
                 require(plan.peak_device_bytes <= config.device_bytes, "E_MEMORY: plan exceeds retained device allocation budget");
             }
@@ -437,6 +445,8 @@ SearchResult enumerate(const Graph& graph, const Config& config) {
     require(graph.nodes.size() <= max_nodes, "E_LIMIT: enumeration is bounded to 12 nodes");
     SearchResult result;
     const std::size_t combinations = std::size_t{1} << graph.nodes.size();
+    // Small graphs only. Exhaustive search gives us a baseline we can inspect.
+    // This will not scale to a full model with hundreds of operators.
     for (std::size_t mask = 0; mask < combinations; ++mask) {
         std::vector<Backend> placement(graph.nodes.size(), Backend::Cpu);
         bool legal = true;
@@ -515,6 +525,8 @@ Run execute(const Graph& source, const Plan& plan, const Config& config) {
         };
         if (c.kind == Kind::Synchronize) {
             require(c.backend == Backend::Device, "E_SYNC: invalid synchronization target");
+            // Arithmetic already ran on this thread. This flag checks the
+            // completion contract; it is not an asynchronous device queue.
             pending = false;
         } else if (c.kind == Kind::Allocate) {
             require(in_lane(c.output), "E_HANDLE: allocation backend and handle disagree");
