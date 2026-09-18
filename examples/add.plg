@@ -1,0 +1,4 @@
+tensor A f32 1 4 1 2 3 4
+tensor B f32 1 4 10 20 30 40
+add sum A B Y
+output Y

@@ -1,0 +1,7 @@
+# C has two consumers; fusion must preserve it by declining the rewrite.
+tensor A f32 2 3 1 -2 3 0 4 -1
+tensor B f32 3 2 2 1 1 -3 -2 2
+matmul mm A B C
+relu activation C R
+add branch_join C R Y
+output Y

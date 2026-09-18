@@ -1,0 +1,4 @@
+# Rejected at the frontend: there is no implicit f16 -> f32 conversion.
+tensor A f16 1 2 1 2
+relu activation A Y
+output Y
