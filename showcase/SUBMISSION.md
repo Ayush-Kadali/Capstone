@@ -5,6 +5,16 @@
 **Version:** 0.1 prototype, September 2026  
 **Repository:** https://github.com/Ayush-Kadali/Capstone
 
+## Context and status
+
+PlacementLens is the first working slice of our capstone, an explainable hardware-aware runtime for heterogeneous edge-AI execution. The capstone asks how often "offload every supported operator" is the wrong decision on edge devices, and by how much, measured as placement regret against an exhaustively measured oracle.
+
+| Status | Components |
+|---|---|
+| Built and tested | Graph language and validation, guarded fusion, capability analysis, three placement policies, transfer insertion, lowering to commands, checked runtime, reference evaluator, per-pass explanation records, CLI, verification matrix |
+| First version only | Functional software device (correctness and protocol rules, no timing behaviour); analytical cost model with hand-set constants; per-command host timing; retained-memory accounting without frees |
+| Planned, not built | Calibrated profiles, measured oracle, placement regret, an uncertainty-aware policy, profile-error injection, asynchronous queues, a real edge backend, ONNX import |
+
 ## Problem
 
 An accelerator may support only part of an AI model. Assigning every supported operator to that accelerator can split the graph across backends and add transfers, synchronization, and launch overhead. Operator-level support alone does not explain whether a complete placement is worthwhile. Developers need to see how a capability decision propagates through compiler transformations into executable commands.
