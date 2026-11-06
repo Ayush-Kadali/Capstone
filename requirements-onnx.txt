@@ -1,0 +1,5 @@
+# Optional model-import and independent-reference environment.
+# Tested on Python 3.12 / arm64 macOS. PyTorch export is a separate optional step.
+onnx==1.20.1
+onnxruntime==1.24.2
+numpy==2.5.3

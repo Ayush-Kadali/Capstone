@@ -29,6 +29,10 @@ pl::Graph graph(const std::string& suffix = "add bias R D Y\noutput Y\n") {
 void parse_bad(const std::string& input, const std::string& code) {
     rejects([&] { std::istringstream s(input); (void)pl::parse(s); }, code);
 }
+pl::Graph parse_graph(const std::string& input) {
+    std::istringstream stream(input);
+    return pl::parse(stream);
+}
 void renumber(pl::Plan& plan) {
     for (std::size_t i = 0; i < plan.commands.size(); ++i) plan.commands[i].id = i;
 }
@@ -95,12 +99,63 @@ int main() {
         parse_bad("tensor A f16 1 1 1\n", "E_DTYPE");
         parse_bad("tensor A f32 0 1\n", "E_SHAPE");
         parse_bad("tensor A f32 999999999 999999999\n", "E_SHAPE");
+        parse_bad("tensor A f32 -18446744073709551615 1 1\nrelu r A Y\noutput Y\n", "E_SHAPE");
+        parse_bad("tensor A f32 1 -18446744073709551615 1\nrelu r A Y\noutput Y\n", "E_SHAPE");
+        parse_bad("tensor A f32 -1 1\n", "E_SHAPE");
+        parse_bad("tensor A f32 18446744073709551616 1\n", "E_SHAPE");
+        parse_bad("tensor A f32 1.0 1 1\n", "E_SHAPE");
         parse_bad("tensor A f32 1 1 1 2\n", "E_PARSE");
         parse_bad("tensor A f32 1 2 1\n", "E_VALUE");
         parse_bad("tensor A f32 1 1 1\nrelu n X Y\noutput Y\n", "E_REFERENCE");
         parse_bad("relu a Y X\nrelu b X Y\noutput Y\n", "E_CYCLE");
         parse_bad("tensor A f32 1 1 1\nrelu a A A\noutput A\n", "E_SSA");
         parse_bad("tensor A f32 1 2 1 2\ntensor B f32 3 1 1 2 3\nmatmul m A B Y\noutput Y\n", "E_SHAPE");
+        // Scheduling scans source order, then retries earlier blocked nodes.
+        const auto reordered = parse_graph("tensor X f32 1 1 -2\nrelu consumer A Y\nadd producer X X A\nrelu independent X Z\noutput Y\n");
+        check(reordered.nodes[0].id == "producer" && reordered.nodes[1].id == "independent" &&
+              reordered.nodes[2].id == "consumer", "deterministic source-order topological scans");
+        c = pl::Config{};
+        for (const auto& p : pl::enumerate(reordered,c).plans)
+            check(pl::execute(reordered,p,c).output.values == std::vector<float>({0}), "forward references execute in dependency order");
+        // A public Graph can be mutated after validation. Reject malformed
+        // storage before ReLU's transform or MatMul's indexing reaches it.
+        const auto unary = parse_graph("tensor X f32 1 1 2\nrelu r X Y\noutput Y\n");
+        const auto unary_plan = pl::choose(unary,c,"cpu");
+        auto malformed = unary;
+        malformed.inputs.at("X").values.push_back(3);
+        rejects([&] { (void)pl::execute(malformed,unary_plan,c); }, "E_VALUE");
+        malformed.inputs.at("X").values.clear();
+        rejects([&] { (void)pl::execute(malformed,unary_plan,c); }, "E_VALUE");
+        malformed = unary; malformed.inputs.at("X").shape.rows = 0;
+        rejects([&] { (void)pl::execute(malformed,unary_plan,c); }, "E_SHAPE");
+        malformed = unary; malformed.inputs.at("X").values[0] = std::numeric_limits<float>::infinity();
+        rejects([&] { (void)pl::execute(malformed,unary_plan,c); }, "E_VALUE");
+        // ReLU must not hide a nonfinite MatMul result. These finite inputs
+        // produce negative infinity and NaN respectively in f32 accumulation.
+        c.relu_supported = true;
+        for (const std::string operands : {
+                "tensor A f32 1 1 3e38\ntensor B f32 1 1 -2\n",
+                "tensor A f32 1 2 3e38 3e38\ntensor B f32 2 1 -2 2\n"}) {
+            const auto overflow = parse_graph(operands + "matmul m A B M\nrelu r M Y\noutput Y\n");
+            const auto overflow_fused = pl::fuse_matmul_relu(overflow,c).graph;
+            for (const auto& p : pl::enumerate(overflow,c).plans)
+                rejects([&] { (void)pl::execute(overflow,p,c); }, "E_NUMERIC");
+            for (const auto& p : pl::enumerate(overflow_fused,c).plans)
+                rejects([&] { (void)pl::execute(overflow,p,c); }, "E_NUMERIC");
+        }
+        const auto negative_overflow = parse_graph("tensor A f32 1 1 3e38\ntensor B f32 1 1 -2\nmatmul m A B M\nrelu r M Y\noutput Y\n");
+        rejects([&] { (void)pl::reference(negative_overflow); }, "E_NUMERIC");
+        const auto negative_fused = pl::fuse_matmul_relu(negative_overflow,c).graph;
+        rejects([&] { (void)pl::reference(negative_fused); }, "E_NUMERIC");
+        // The f32 runtime sum is finite here, while double accumulation rounds
+        // to infinity when stored as f32. Reject the unusable reference before
+        // it could become an infinite error and invalid JSON numeric literal.
+        std::string overflow_text = "tensor A f32 1 12";
+        for (int i = 0; i < 12; ++i) overflow_text += " 2.83568648e37";
+        overflow_text += "\ntensor B f32 12 1 1 1 1 1 1 1 1 1 1 1 1 1\nmatmul m A B Y\noutput Y\n";
+        const auto oracle_overflow = parse_graph(overflow_text);
+        rejects([&] { (void)pl::reference(oracle_overflow); }, "E_NUMERIC");
+        rejects([&] { (void)pl::execute(oracle_overflow,pl::choose(oracle_overflow,c,"cpu"),c); }, "E_NUMERIC");
         // Different graph topology: shared input reused on the same backend is copied only once.
         std::istringstream shared("tensor X f32 1 2 -1 2\nadd a X X A\nadd b A X Y\noutput Y\n");
         const auto sg = pl::parse(shared); c = pl::Config{};
@@ -126,6 +181,34 @@ int main() {
             auto fg=pl::fuse_matmul_relu(random_graph,c).graph;
             for (const auto& p : pl::enumerate(fg,c).plans)
                 check(pl::execute(random_graph,p,c).correct,"random fused graph/all placements");
+        }
+        {   // Declared target support rules: capability reasons, execute-time recheck, config validation.
+            const auto rg = graph();
+            pl::Config open; open.relu_supported = true;
+            const auto all_device = pl::lower(rg, std::vector<pl::Backend>(rg.nodes.size(), pl::Backend::Device), open);
+            check(pl::execute(rg, all_device, open).correct, "rule-free all-device plan executes");
+            auto excluded = open; excluded.device_unsupported_ops = {"MatMul"};
+            check(pl::capability(rg.nodes[0], rg, excluded).reason == "operator excluded by the declared target support rules",
+                  "operator exclusion reason");
+            check(pl::capability(rg.nodes[1], rg, excluded).accepted, "exclusion is per operator");
+            auto small = open; small.device_max_tensor_bytes = 8;  // A is 2x3 = 24 B
+            check(pl::capability(rg.nodes[0], rg, small).reason == "tensor exceeds the declared per-tensor device limit",
+                  "per-tensor limit reason");
+            for (const auto& cfg : {excluded, small})
+                rejects([&] { (void)pl::execute(rg, all_device, cfg); }, "E_CAPABILITY: device rejects command");
+            const auto conv = parse_graph("tensor X f32 1 4 1 2 3 4\ntensor W f32 2 1 1 1\n"
+                                          "conv2d dw X W Y 1 2 1 2 2 1 1 1 1 0 0 0 0 2 1 1\noutput Y\n");
+            pl::Config cnn; cnn.cnn_supported = true;
+            check(pl::capability(conv.nodes[0], conv, cnn).accepted, "grouped conv accepted by default");
+            const auto conv_plan = pl::lower(conv, {pl::Backend::Device}, cnn);
+            auto ungrouped = cnn; ungrouped.device_grouped_conv = false;
+            check(pl::capability(conv.nodes[0], conv, ungrouped).reason == "grouped convolution excluded by the declared target support rules",
+                  "grouped-conv rule reason");
+            rejects([&] { (void)pl::execute(conv, conv_plan, ungrouped); }, "E_CAPABILITY: device rejects command");
+            auto unknown = open; unknown.device_unsupported_ops = {"Sigmoid"};
+            rejects([&] { pl::validate_config(unknown); }, "E_CONFIG: unknown excluded device operator");
+            auto many = open; many.device_unsupported_ops.assign(17, "Add");
+            rejects([&] { pl::validate_config(many); }, "E_CONFIG: at most 16");
         }
         std::cout << "PASS: " << checks << " core assertions\n";
         return 0;

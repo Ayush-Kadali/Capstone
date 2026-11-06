@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-11-05T18:43:47.239587+00:00",
+  "trained": true,
+  "dataset": {
+    "name": "Optical recognition of handwritten digits (sklearn.datasets.load_digits)",
+    "provenance": "Copy of the test set of the UCI ML hand-written digits datasets (https://archive.ics.uci.edu/ml/datasets/Optical+Recognition+of+Handwritten+Digits); creator E. Alpaydin, July 1998, as stated in the bundled scikit-learn DESCR",
+    "licence": "Not stated in the bundled scikit-learn DESCR; check the UCI repository page before redistribution",
+    "instances": 1797,
+    "features": "8x8 integer pixels 0..16",
+    "classes": 10
+  },
+  "preprocessing": "float32(x / 16.0); MLP input [N,64], CNN input [N,1,8,8] (row-major reshape)",
+  "split": {
+    "method": "two stratified sklearn train_test_split calls (test, then validation)",
+    "random_state": 20261106,
+    "sizes": {
+      "train": 1077,
+      "validation": 360,
+      "test": 360
+    },
+    "file": "split.npz"
+  },
+  "training": {
+    "seed": 20261106,
+    "optimizer": "Adam",
+    "learning_rate": 0.01,
+    "weight_decay": 0.0001,
+    "epochs": 150,
+    "batch_size": 64,
+    "loss": "cross_entropy",
+    "threads": 1,
+    "deterministic_algorithms": true,
+    "selection": "epoch with highest validation accuracy (first on ties); test evaluated once after selection"
+  },
+  "export": {
+    "exporter": "torch.onnx.export(dynamo=False)",
+    "opset": 13,
+    "dtype": "float32",
+    "quantized": false
+  },
+  "models": {
+    "mlp": {
+      "architecture": "Linear -> ReLU -> Linear",
+      "onnx": "mlp.onnx",
+      "state_dict": "mlp_state_dict.pt",
+      "input_name": "pixels",
+      "onnx_batch": 360,
+      "test_inputs": [
+        "mlp_test_inputs.npz"
+      ],
+      "demo_inputs": "mlp_test_inputs.npz",
+      "operators": [
+        "Gemm",
+        "Relu",
+        "Gemm"
+      ],
+      "parameters": 2410,
+      "selected_epoch": 96,
+      "pytorch_accuracy": {
+        "train": 1.0,
+        "validation": 0.9694444444444444,
+        "test": 0.9694444444444444
+      },
+      "onnxruntime_test_accuracy": 0.9694444444444444,
+      "max_abs_logit_diff_pytorch_vs_ort": 7.62939453125e-06,
+      "argmax_agreement_pytorch_vs_ort": 1.0
+    },
+    "cnn": {
+      "architecture": "Conv2d -> ReLU -> MaxPool2d -> Flatten -> Linear",
+      "onnx": "cnn.onnx",
+      "state_dict": "cnn_state_dict.pt",
+      "input_name": "image",
+      "onnx_batch": 120,
+      "test_inputs": [
+        "cnn_test_chunk0.npz",
+        "cnn_test_chunk1.npz",
+        "cnn_test_chunk2.npz"
+      ],
+      "demo_inputs": "cnn_test_chunk0.npz",
+      "operators": [
+        "Conv",
+        "Relu",
+        "MaxPool",
+        "Flatten",
+        "Gemm"
+      ],
+      "parameters": 1370,
+      "selected_epoch": 108,
+      "pytorch_accuracy": {
+        "train": 1.0,
+        "validation": 0.9777777777777777,
+        "test": 0.975
+      },
+      "onnxruntime_test_accuracy": 0.975,
+      "max_abs_logit_diff_pytorch_vs_ort": 7.62939453125e-06,
+      "argmax_agreement_pytorch_vs_ort": 1.0
+    }
+  },
+  "versions": {
+    "python": "3.14.6",
+    "platform": "macOS-15.7.3-arm64-arm-64bit-Mach-O",
+    "torch": "2.11.0",
+    "onnx": "1.20.1",
+    "onnxruntime": "1.24.2",
+    "numpy": "2.5.3",
+    "scikit_learn": "1.8.0"
+  },
+  "command": "python scripts/train_digits.py train --out examples/models/digits",
+  "sha256": {
+    "cnn.onnx": "52bbbc9f18a20da1b3de5ffa85a9a993d73d31698f80f93996edf5190d4b8912",
+    "cnn_state_dict.pt": "4965c8f4eee2748efa6a10516e8b73cdb8da36fdee6a1664a384940530fd4610",
+    "cnn_test_chunk0.npz": "cf8bdb582b7c0661d483adc45dd05d92f2e395d0c55b7737d5fe3aa5148b73ec",
+    "cnn_test_chunk1.npz": "2851d9714f0db31b470d6652429b4afbce9a327b46c0c416f20712950d30b13a",
+    "cnn_test_chunk2.npz": "4621a78e28dea678f24435361b14987834a4c0e17017fb7df1117c2910ce381f",
+    "mlp.onnx": "fc7bb446a8e7bafed9cf98d52d00f8fdba5c31acaf0385830b84136e0f7c8290",
+    "mlp_state_dict.pt": "6cc1be3165011c7f2e9e6716e2009b56f45475a57f8e87db40deb56ce868d45a",
+    "mlp_test_inputs.npz": "7522344a022fc472a0de48ccd33159d61489a3161bc5a7ef87ac04b126284214",
+    "split.npz": "def3e51e9b97f6f9fad400edc39e72d82494ef8880393c058a6f2cbae01636e1"
+  }
+}

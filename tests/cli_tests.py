@@ -94,4 +94,99 @@ with tempfile.TemporaryDirectory() as td:
     invoke("explain", *base, "--report", report, "--json", report, expected=1)
     invoke("run", *base, "--report", markdown, expected=1)
     invoke("explain", "--help")
+    # Inputs and output paths fail explicitly, without damaging the input graph.
+    invoke("unknown", *base, expected=1)
+    invoke("run", expected=1)
+    invoke("run", *base, "--json", expected=1)
+    invoke("run", "--graph", pathlib.Path(td)/"missing.plg", expected=1)
+    invoke("run", "--graph", td, expected=1)
+    invoke("run", *base, "--json", pathlib.Path(td)/"missing"/"out.json", expected=1)
+    fixture = pathlib.Path(td)/"input.plg"
+    original = (root/"examples/fragmented.plg").read_text()
+    fixture.write_text(original)
+    alias = pathlib.Path(td)/"alias.plg"
+    alias.symlink_to(fixture)
+    invoke("run", "--graph", fixture, "--json", alias, expected=1)
+    assert fixture.read_text() == original
+    for invalid in (b"\xff", b"\xc0\xaf", b"\xed\xa0\x80", b"\xf4\x90\x80\x80", b"\xe2\x82", b"\xe2X\xa0"):
+        fixture.write_bytes(b"#" + invalid + b"\n" + original.encode())
+        result = invoke("run", "--graph", fixture, "--json", report, expected=1)
+        assert "UTF-8" in result.stderr
+    fixture.write_text("# café → 🙂\n" + original, encoding="utf-8")
+    invoke("run", "--graph", fixture, "--json", report)
+    assert "café → 🙂" in json.loads(report.read_text(encoding="utf-8"))["frontend_passes"][0]["input_ir"]
+    oversized = pathlib.Path(td)/"oversized.plg"
+    oversized.write_bytes(b"#" * 16000001)
+    result = invoke("inspect", "--graph", oversized, expected=1)
+    assert "E_LIMIT: graph file exceeds 16 MB" in result.stderr
+    for dimension in ("-18446744073709551615", "18446744073709551616", "-1", "0", "1oops"):
+        fixture.write_text(f"tensor A f32 {dimension} 1 1\nrelu r A Y\noutput Y\n")
+        invoke("run", "--graph", fixture, expected=1)
+    fixture.write_text("tensor A f32 1 1 3e38\ntensor B f32 1 1 -2\nmatmul m A B M\nrelu r M Y\noutput Y\n")
+    for fusion_flags in ([], ["--fuse"]):
+        result = invoke("run", "--graph", fixture, "--relu-supported", *fusion_flags, expected=1)
+        assert "E_NUMERIC" in result.stderr
+    # A finite runtime sum can have an unusable, overflowing reference. Reject
+    # explicitly, before writing a report with an invalid `inf` numeric token.
+    fixture.write_text("tensor A f32 1 12 " + " ".join(["2.83568648e37"] * 12) +
+                       "\ntensor B f32 12 1 " + " ".join(["1"] * 12) + "\nmatmul m A B Y\noutput Y\n")
+    overflow_report = pathlib.Path(td)/"overflow.json"
+    result = invoke("run", "--graph", fixture, "--policy", "cpu", "--json", overflow_report, expected=1)
+    assert "E_NUMERIC: reference" in result.stderr and not overflow_report.exists()
+    fixture.write_text("tensor A f32 1 1 1\nsoftmax r A Y\noutput Y\n")
+    result = invoke("run", "--graph", fixture, expected=1)
+    assert "unknown statement" in result.stderr
+    fixture.write_text("tensor A f32 1 3 100000000 1 -100000000\n"
+                       "tensor B f32 3 1 1 1 1\nmatmul m A B Y\noutput Y\n")
+    invoke("run", "--graph", fixture, "--policy", "cpu", "--json", report, expected=2)
+    mismatch = json.loads(report.read_text())["results"][0]
+    assert not mismatch["correct"] and mismatch["max_abs_error"] == 1 and mismatch["output"] == [0]
+    invoke("compare", *base, "--async", "--json", report, "--trace", trace)
+    asynchronous = json.loads(report.read_text())
+    assert [r["placement"] for r in asynchronous["results"]] == ["CCC", "ACA", "ACC"]
+    for row in asynchronous["results"]:
+        assert row["correct"] and row["output"] == [1,14,7,1]
+        assert row["execution_backend"].startswith("async worker:")
+        assert row["queue_wait_ms"] >= 0 and row["end_to_end_ms"] >= row["host_execution_ms"]
+        assert len(row["events"]) == len(row["commands"])
+        for command, event in zip(row["commands"], row["events"]):
+            assert event["command_id"] == command["id"] and event["name"] == command["kind"]
+            assert event["start_us"] >= 0 and event["duration_us"] >= 0 and event["device_us"] is None
+    invoke("run", *base, "--backend", "unknown", expected=1)
+    invoke("compile", *base, "--async", expected=1)
+    invoke("verify", *base, "--async", "--json", report)
+    assert all(r["correct"] for r in json.loads(report.read_text())["results"])
+    invoke("verify", *base, "--reuse-buffers", "--tile-size", "2", "--local-bytes", "48",
+           "--resident-input", "B", "--resident-input", "A", "--order-seed", "19", "--json", report)
+    resident = json.loads(report.read_text())
+    assert resident["config"]["mirrored_inputs"] == ["A", "B"]
+    assert all(r["correct"] and r["preparation_h2d_bytes"] == 48 and len(r["initial_buffers"]) == 2
+               and r["end_to_end_ms"] >= r["host_execution_ms"] + r["input_preparation_ms"] for r in resident["results"])
+    assert any(r["tile_count"] > 0 and r["software_buffer_reuses"] > 0 for r in resident["results"])
+    invoke("run", *base, "--tile-size", "65", expected=1)
+    invoke("run", *base, "--tile-size", "2", "--local-bytes", "47", expected=1)
+    invoke("run", *base, "--resident-input", "missing", expected=1)
+    invoke("run", *base, "--resident-input", "A", "--resident-input", "A", expected=1)
+    invoke("run", *base, "--resident-input", "A", "--device-bytes", "23", expected=1)
+    invoke("run", *base, "--sync-ms", "-1", expected=1)
+    invoke("run", *base, "--bandwidth", "0", expected=1)
+    invoke("run", *base, "--order-seed", "1", expected=1)
+    # Command-level queue runtime: same results, per-command engine lanes and dependency waits.
+    queued = invoke("run", *base, "--policy", "maximal", "--relu-supported", "--runtime", "command-queue",
+                    "--emulate-boundaries", "--boundary-ms", "20", "--launch-ms", "20", "--json", report, "--trace", trace)
+    assert "copy/compute engine overlap" in queued.stdout and "synthetic waits" in queued.stdout
+    result = json.loads(report.read_text())["results"][0]
+    assert result["correct"] and result["output"] == [1,14,7,1] and result["engine_overlap_us"] > 0
+    assert result["execution_backend"].startswith("command-queue simulator")
+    by_id = {e["command_id"]: e for e in result["events"]}
+    for e in result["events"]:
+        command = result["commands"][e["command_id"]]
+        assert e["engine"] == ("copy-engine" if command["kind"] == "COPY" else
+                               "compute-engine" if command["kind"] == "COMPUTE" and command["backend"] == "virtual-device" else "host")
+        assert all(by_id[w]["start_us"] + by_id[w]["duration_us"] <= e["start_us"] for w in e["waits"])
+    assert {e["tid"] for e in json.loads(trace.read_text())["traceEvents"]} == {1, 2, 3}
+    invoke("verify", *base, "--reuse-buffers", "--resident-input", "A", "--runtime", "command-queue", "--json", report)
+    assert all(r["correct"] for r in json.loads(report.read_text())["results"])
+    invoke("run", *base, "--runtime", "parallel", expected=1)
+    invoke("compile", *base, "--runtime", "command-queue", expected=1)
 print(f"PASS: {checks} CLI invocations plus report/trace contracts")

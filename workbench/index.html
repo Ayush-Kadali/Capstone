@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Execution workbench · Capstone</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#evidence">Skip to evidence</a>
+    <header>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">↳</span>
+        <div>
+          <strong>Execution workbench</strong
+          ><span>Capstone research / compiler and runtime explorer</span>
+        </div>
+      </div>
+      <span class="local">Loopback session</span>
+    </header>
+    <div class="workspace">
+      <aside aria-label="Experiment controls">
+        <div class="section-title">
+          <h1>Set the experiment</h1>
+          <span class="tag exact">Core controls</span>
+        </div>
+        <p class="intro">
+          Change an assumption. Run the same engine. Follow the evidence.
+        </p>
+        <details class="model-upload" open>
+          <summary>Bring an ONNX model</summary>
+          <p>Upload a bounded model and an NPZ archive keyed by its input names. Both stay in this local evidence directory.</p>
+          <form id="model-form">
+            <label>ONNX model<input id="model-file" type="file" accept=".onnx" required aria-describedby="model-limits" /></label>
+            <label>Named inputs (.npz)<input id="inputs-file" type="file" accept=".npz" required aria-describedby="model-limits" /></label>
+            <p id="model-limits">Maximum 16 MiB per file. Supported static float32 models only; unsupported operations receive diagnostics.</p>
+            <label>Target profile<select id="target-profile" required><option value="">Loading profiles…</option></select></label>
+            <p id="target-description"></p>
+            <p id="model-availability" role="status">Checking ONNX dependencies…</p>
+            <p id="model-error" role="alert" hidden></p>
+            <button id="run-model" type="submit" disabled>Explore ONNX model</button>
+          </form>
+        </details>
+        <h2 class="generated-heading">Or generate a teaching graph</h2>
+        <form id="experiment-form">
+          <label
+            >Graph family<select name="topology">
+              <option value="chain">MatMul → ReLU → Add</option>
+              <option value="shared">Shared intermediate</option>
+              <option value="residual">Residual branch</option>
+            </select></label
+          >
+          <div class="pair">
+            <label
+              >Tensor width<select name="width">
+                <option>2</option>
+                <option>4</option>
+                <option selected>8</option>
+                <option>16</option>
+              </select></label
+            ><label
+              >Evaluation runs<select name="samples">
+                <option selected>3</option>
+                <option>5</option>
+                <option>7</option>
+              </select></label
+            >
+          </div>
+          <fieldset>
+            <legend>Capability and execution</legend>
+            <label class="check"
+              ><input type="checkbox" name="relu_supported" /> Device supports
+              ReLU</label
+            ><label class="check"
+              ><input type="checkbox" name="fusion" /> Fuse eligible MatMul +
+              ReLU</label
+            ><label class="check"
+              ><input type="checkbox" name="reuse_buffers" /> Reuse exact-size
+              device buffers</label
+            ><label class="check"
+              ><input type="checkbox" name="mirrored_inputs" /> Mirror inputs on
+              host and device</label
+            ><label class="check"
+              ><input type="checkbox" name="asynchronous" /> Use asynchronous
+              host worker</label
+            >
+          </fieldset>
+          <details>
+            <summary>Memory, tiling and cost assumptions</summary>
+            <label
+              >Device tensor budget (bytes)<input
+                name="device_bytes"
+                type="number"
+                min="0"
+                max="16777216"
+                step="1"
+                value="1048576"
+                required
+            /></label>
+            <div class="pair">
+              <label
+                >MatMul tile<select name="tile_size">
+                  <option value="0">Scalar</option>
+                  <option>2</option>
+                  <option>4</option>
+                  <option>8</option>
+                  <option>16</option>
+                </select></label
+              ><label
+                >Local scratch (bytes)<input
+                  name="local_bytes"
+                  type="number"
+                  min="0"
+                  max="1048576"
+                  step="1"
+                  value="32768"
+                  required
+              /></label>
+            </div>
+            <label
+              >Modeled boundary cost (ms)<input
+                name="boundary_ms"
+                type="number"
+                min="0"
+                max="100"
+                step="any"
+                value="1.3"
+                required /></label
+            ><label
+              >Modeled synchronization (ms)<input
+                name="sync_ms"
+                type="number"
+                min="0"
+                max="100"
+                step="any"
+                value="0.05"
+                required /></label
+            ><label
+              >Modeled device launch (ms)<input
+                name="launch_ms"
+                type="number"
+                min="0"
+                max="100"
+                step="any"
+                value="0.2"
+                required /></label
+            ><label class="check"
+              ><input type="checkbox" name="emulate_boundaries" /> Inject
+              boundary waits (host simulation)</label
+            >
+            <p class="hint">
+              By default, these costs are model-only and do not delay execution.
+              Enable host simulation to inject bounded software waits; this is
+              not measured accelerator behavior.
+            </p>
+            <label
+              >Injected profile error (0–1)<input
+                name="profile_error"
+                type="number"
+                min="0"
+                max="0.99"
+                step="any"
+                value="0"
+                required /></label
+            ><label
+              >Seed<input
+                name="seed"
+                type="number"
+                min="0"
+                max="4294967295"
+                step="1"
+                value="20261004"
+                required
+            /></label>
+          </details>
+          <details>
+            <summary>Predict before running</summary>
+            <label
+              >Predicted COPY command count<input
+                id="prediction"
+                type="number"
+                min="0"
+                max="200"
+                step="1"
+                placeholder="Optional"
+            /></label>
+            <p class="hint">
+              Prediction uses the selected policy after the run. Saved in this
+              browser; no proficiency score.
+            </p>
+          </details>
+          <button id="run" class="primary" type="submit">Run experiment</button>
+          <p class="hint">
+            1 warm-up, 3 calibration runs, then held-out evaluation. One
+            experiment at a time.
+          </p>
+        </form>
+        <p id="status" role="status" aria-live="polite">
+          Loading saved evidence…
+        </p>
+        <p id="error" role="alert" hidden></p>
+        <section class="limits">
+          <h2>Execution scope</h2>
+          <p>
+            Controls run bounded host software studies. Placement letters
+            describe logical CPU/device lanes.
+          </p>
+          <p>
+            Mirrored inputs are preloaded before the timed executor. Precision
+            and layout controls are unavailable; tensors are contiguous f32.
+          </p>
+        </section>
+      </aside>
+      <main id="evidence" tabindex="-1">
+        <section id="model-evidence" class="model-evidence" hidden aria-labelledby="model-evidence-heading">
+          <h2 id="model-evidence-heading">ONNX source and target evidence</h2>
+          <div id="model-provenance"></div>
+        </section>
+        <div class="toolbar">
+          <label
+            >Saved study<select id="study">
+              <option value="">No saved studies</option>
+            </select></label
+          ><label
+            >Policy<select id="policy">
+              <option value="robust">Boundary and uncertainty aware</option>
+              <option value="cpu">CPU only</option>
+              <option value="maximal">Strict maximal supported</option>
+              <option value="additive">Profile additive</option>
+              <option value="oracle">Measured oracle</option>
+              <option value="maximal_feasible">
+                Maximal feasible node count
+              </option>
+            </select></label
+          ><button id="pin" disabled>Use as baseline</button
+          ><a
+            id="download"
+            class="export-action"
+            aria-disabled="true"
+            tabindex="-1"
+            download
+            >Export bundle</a
+          >
+        </div>
+        <div id="empty" class="empty">
+          <div class="empty-diagram" aria-hidden="true">
+            <span>Graph</span><b>→</b><span>Plan</span><b>→</b
+            ><span>Evidence</span>
+          </div>
+          <h2>Begin with the unsupported operator experiment.</h2>
+          <p>
+            Run with ReLU support disabled. Pin the result as your baseline,
+            enable ReLU, and run again. The comparison will show the planner's
+            structural changes and separately report observed timings.
+          </p>
+          <p>No measurements are displayed until an experiment completes.</p>
+        </div>
+        <div id="loaded" hidden>
+          <div id="correctness" role="status"></div>
+          <p id="search-scope" class="notice" aria-live="polite"></p>
+          <section class="identity">
+            <div>
+              <h2 id="study-title"></h2>
+              <p id="identity-summary"></p>
+            </div>
+            <a id="raw" href="#">Raw artifact</a>
+          </section>
+          <div class="legend" aria-label="Provenance legend">
+            <span class="tag exact">Exact structural</span
+            ><span class="tag measured">Measured</span
+            ><span class="tag modeled">Modeled</span
+            ><span class="tag derived">Derived</span
+            ><span class="tag unavailable">Unavailable</span>
+          </div>
+          <section
+            id="metrics"
+            class="metrics"
+            aria-label="Selected plan metrics"
+          ></section>
+          <p id="policy-reason" class="reason"></p>
+          <p id="prediction-result" class="reason" hidden></p>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Graph and placement</h2>
+              <span class="tag exact">Exact structural</span>
+            </div>
+            <p class="hint">
+              Select an operation to link its operands, command records and
+              measured events. C = CPU; A = logical device.
+            </p>
+            <div id="graph" class="graph"></div>
+            <details>
+              <summary>Original graph and transformation evidence</summary>
+              <div id="source-graph"></div>
+              <div id="frontend-passes"></div>
+            </details>
+          </section>
+          <div class="inspector-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Selected operation</h2>
+                <span class="tag exact">Exact structural</span>
+              </div>
+              <div id="inspector"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>Tensor storage</h2>
+                <span class="tag exact">Exact + derived</span>
+              </div>
+              <p class="hint">
+                Use intervals come from command references. End-of-run retention
+                is distinct from last use.
+              </p>
+              <div id="buffers" class="table-scroll"></div>
+            </section>
+          </div>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Recorded host timeline</h2>
+              <div>
+                <a
+                  id="trace-export"
+                  class="export-action"
+                  aria-disabled="true"
+                  tabindex="-1"
+                  download
+                  >Export Chrome Trace</a
+                ><span class="tag measured">Measured</span>
+              </div>
+            </div>
+            <p class="hint">
+              One held-out execution, shared host clock. Lanes group commands;
+              they do not imply parallel execution. Queue delay is an aggregate
+              when reported.
+            </p>
+            <div id="timeline"></div>
+            <div id="hardware" class="reason"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Execution commands</h2>
+              <span class="tag exact">Exact structural</span>
+            </div>
+            <div id="commands" class="table-scroll"></div>
+            <details>
+              <summary>Lowering passes and reasons</summary>
+              <div id="passes"></div>
+            </details>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Baseline comparison</h2>
+              <button id="clear-baseline" disabled>Clear baseline</button>
+            </div>
+            <div id="comparison">
+              <p>Pin a saved study, change one control, then run again.</p>
+            </div>
+          </section>
+          <details class="panel">
+            <summary>
+              Identity, measurement scope and unavailable evidence
+            </summary>
+            <div id="provenance"></div>
+          </details>
+        </div>
+        <section id="target-estimate" class="panel estimate" aria-labelledby="estimate-heading">
+          <div class="panel-heading">
+            <h2 id="estimate-heading">Architecture target estimate</h2>
+            <span class="tag modeled">Modeled, not measured</span>
+          </div>
+          <p class="hint">
+            Estimates an ONNX model on declared hypothetical architectures with
+            <code>scripts/architecture_model.py</code>. Nothing executes; no
+            NPZ is needed. Choose one target to estimate or 2–4 to compare.
+          </p>
+          <form id="estimate-form">
+            <label>Model<select id="estimate-model" required>
+              <option value="file">File chosen under “Bring an ONNX model”</option>
+            </select></label>
+            <fieldset>
+              <legend>Architecture targets</legend>
+              <div id="estimate-targets" class="estimate-targets"><p class="hint">Loading architecture profiles…</p></div>
+            </fieldset>
+            <label class="check"><input id="estimate-resident" type="checkbox" /> Weights already resident on the accelerator</label>
+            <button id="run-estimate" type="submit" class="primary estimate-run" disabled>Estimate</button>
+          </form>
+          <p id="estimate-status" role="status" aria-live="polite"></p>
+          <p id="estimate-error" class="failure" role="alert" hidden></p>
+          <div id="estimate-result" aria-live="polite"><p class="hint">No estimate yet. Choose a model and at least one target, then estimate.</p></div>
+        </section>
+      </main>
+    </div>
+    <footer>
+      PlacementLens names the compiler hackathon component. This workbench
+      presents capstone execution evidence.
+    </footer>
+  </body>
+</html>

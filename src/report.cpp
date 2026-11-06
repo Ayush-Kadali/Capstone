@@ -42,11 +42,13 @@ std::string explain_report(const Graph& source, const Graph& compiled, const Con
     std::ostringstream out;
     out << std::fixed << std::setprecision(6);
     out << "# PlacementLens run report\n\n"
-        << "Costs are illustrative model values. Arithmetic runs on the host with separate\n"
-        << "virtual-device buffers. Host timings below are measured separately.\n\n"
+        << "Costs are illustrative model values. The selected execution backend is " << selected_run.execution_backend << ".\n"
+        << "Host timings are measured separately; optional hardware event durations are recorded in JSON.\n\n"
         << "## Input and rules\n\n```text\n" << graph_text(source) << "```\n\n"
         << "- Device ReLU: " << (config.relu_supported ? "supported" : "unsupported") << '\n'
-        << "- Retained device memory limit: " << config.device_bytes << " bytes\n"
+        << "- Device allocation/pool limit: " << config.device_bytes << " bytes\n"
+        << "- Buffer policy: " << (config.reuse_buffers ? "last-use release and exact-size software reuse" : "retain until completion") << '\n'
+        << "- Software-device tile edge: " << config.tile_size << "; local budget: " << config.local_bytes << " bytes\n"
         << "- Copy model: " << config.transfer_fixed_ms << " ms + bytes / "
         << config.bandwidth_bytes_per_ms << " bytes per ms\n"
         << "- Launch charge per device run: " << config.launch_ms << " ms\n"
@@ -58,7 +60,7 @@ std::string explain_report(const Graph& source, const Graph& compiled, const Con
         out << "Compiled graph after fusion:\n\n```text\n" << graph_text(compiled) << "```\n\n";
     for (const auto& pass : selected.passes) describe_pass(out, pass);
 
-    out << "## Placement comparison\n\nC = CPU, A = software device; letters follow compiled node order.\n\n"
+    out << "## Placement comparison\n\nC = CPU, A = configured device lane; letters follow compiled node order.\n\n"
         << "| Policy | Map | Compute ms | Copies ms | Launch ms | Sync ms | Total modeled ms | Output |\n"
         << "|---|---|---:|---:|---:|---:|---:|---|\n";
     for (std::size_t i = 0; i < plans.size(); ++i) {
@@ -112,7 +114,14 @@ std::string explain_report(const Graph& source, const Graph& compiled, const Con
     for (std::size_t i = 0; i < plans.size(); ++i)
         out << "- " << plans[i].policy << ": " << (runs[i].correct ? "PASS" : "FAIL")
             << ", maximum absolute error " << runs[i].max_abs_error << ", " << runs[i].events.size()
-            << " commands executed, " << runs[i].host_ms << " ms measured host execution\n";
+            << " commands executed, " << runs[i].host_ms << " ms measured host execution; " << runs[i].execution_backend << '\n';
+    out << "\nSelected backend diagnostic readbacks: " << selected_run.diagnostic_readback_bytes
+        << " bytes. These additional validation reads are excluded from planner COPY bytes and the\n"
+        << "illustrative model, but included in host execution time. Hardware event durations, when\n"
+        << "available, measure the command's device event rather than host validation overhead.\n";
+    out << "\nInitial mirrored-input preparation: " << selected_run.preparation_h2d_bytes << " bytes, "
+        << selected_run.input_preparation_ms << " ms. Preparation is excluded from the executor interval;\n"
+        << "end-to-end time includes it. Both host and device copies remain valid initially.\n";
     out << "\nSelected output, row-major: [";
     const auto values = std::min(selected_run.output.values.size(), std::size_t{16});
     for (std::size_t i = 0; i < values; ++i) out << (i ? ", " : "") << selected_run.output.values[i];
@@ -122,8 +131,9 @@ std::string explain_report(const Graph& source, const Graph& compiled, const Con
         << "The emitted commands were executed; bytes, placements and pass changes are inspectable.\n"
         << "The model-optimal policy wins its own objective by construction. That does not validate\n"
         << "hardware speedup. Compute costs do not scale with shape; launch cost is per device run;\n"
-        << "execution is synchronous and retains every allocation until run end. There is no\n"
-        << "hardware-calibrated cost model, native GPU code generation or asynchronous device queue.\n";
+        << "each plan executes sequentially. Buffer lifetimes follow the selected retention/reuse policy. The optional host worker\n"
+        << "provides asynchronous submission, not overlapping commands within a plan. The illustrative\n"
+        << "cost model is not hardware-calibrated, including when a real backend is selected.\n";
     return out.str();
 }
 }

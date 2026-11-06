@@ -1,0 +1,100 @@
+{
+  "purpose": "architecture comparison; seeded untrained weights; task accuracy not evaluated",
+  "torch": "2.11.0",
+  "opset": 13,
+  "exporter": "torch.onnx.export(dynamo=False)",
+  "files": {
+    "edge-standard-16": {
+      "variant": "standard",
+      "resolution": 16,
+      "import_supported": true,
+      "functionally_executable": true,
+      "normalized_nodes": 13
+    },
+    "edge-standard-64": {
+      "variant": "standard",
+      "resolution": 64,
+      "import_supported": true,
+      "functionally_executable": true,
+      "normalized_nodes": 13
+    },
+    "edge-standard-160": {
+      "variant": "standard",
+      "resolution": 160,
+      "import_supported": true,
+      "functionally_executable": false,
+      "normalized_nodes": 13
+    },
+    "edge-depthwise-16": {
+      "variant": "depthwise",
+      "resolution": 16,
+      "import_supported": true,
+      "functionally_executable": true,
+      "normalized_nodes": 19
+    },
+    "edge-depthwise-64": {
+      "variant": "depthwise",
+      "resolution": 64,
+      "import_supported": true,
+      "functionally_executable": true,
+      "normalized_nodes": 19
+    },
+    "edge-depthwise-160": {
+      "variant": "depthwise",
+      "resolution": 160,
+      "import_supported": true,
+      "functionally_executable": false,
+      "normalized_nodes": 19
+    },
+    "edge-residual-16": {
+      "variant": "residual",
+      "resolution": 16,
+      "import_supported": true,
+      "functionally_executable": true,
+      "normalized_nodes": 14
+    },
+    "edge-residual-64": {
+      "variant": "residual",
+      "resolution": 64,
+      "import_supported": true,
+      "functionally_executable": true,
+      "normalized_nodes": 14
+    },
+    "edge-residual-160": {
+      "variant": "residual",
+      "resolution": 160,
+      "import_supported": true,
+      "functionally_executable": false,
+      "normalized_nodes": 14
+    }
+  },
+  "sha256": {
+    "edge-depthwise-16.inputs.npz": "db7a57ecd28e5c2b8956ccbb9ae32e6dbfdfa4cacab695adac4b1746456b1fb8",
+    "edge-depthwise-16.onnx": "2261c17ae829ecfe78a7bda8468f65ad8e19f90b2f4e0d83e162191f68e37acd",
+    "edge-depthwise-16.torch-output.npy": "d4e2e3f9d5588122a2cd66852605a9746ae45f4179fe4cba315326dab79a995f",
+    "edge-depthwise-160.inputs.npz": "e75103047c2add7889d918f0383c1e115cf11e9158b3a12db659e9184ed98f5c",
+    "edge-depthwise-160.onnx": "5f3933ba4fc0166f5fc2f61cc4723cef402cb7d204f673832f56d90d0e376b59",
+    "edge-depthwise-160.torch-output.npy": "66f0fc36f7aa8f8ab802ea38373719750a09735aef7b06b0162c93b54186487c",
+    "edge-depthwise-64.inputs.npz": "33821a64db6ce7b861d8f64596aae1d455ad56c411c342b92e91d9617c680e19",
+    "edge-depthwise-64.onnx": "bb15701c8043008903f469b398fcfb292b552846c003ae21077a14f50bd831ad",
+    "edge-depthwise-64.torch-output.npy": "aa3612513baff7d9cbadf83bb97a2c85ef4a6ba9e5a66eabb91079a062896f28",
+    "edge-residual-16.inputs.npz": "db7a57ecd28e5c2b8956ccbb9ae32e6dbfdfa4cacab695adac4b1746456b1fb8",
+    "edge-residual-16.onnx": "4ea025c56304401cda2a2cb608ca112941f4e127cd9e668ba9a561a513eec181",
+    "edge-residual-16.torch-output.npy": "f390d2c118ca30c7eb0e65c13b1c9da984cf2042d946e67d429755298d9cc125",
+    "edge-residual-160.inputs.npz": "e75103047c2add7889d918f0383c1e115cf11e9158b3a12db659e9184ed98f5c",
+    "edge-residual-160.onnx": "46e2522586921cf6222cbef0a9d2da98d87c93a380f71b39cbedc52e8caefedf",
+    "edge-residual-160.torch-output.npy": "3ae821b80b091701ab3a13ac518de6d88d824a599c1855b6edb3dac9c49142db",
+    "edge-residual-64.inputs.npz": "33821a64db6ce7b861d8f64596aae1d455ad56c411c342b92e91d9617c680e19",
+    "edge-residual-64.onnx": "fdd3798c322d715a0414c6748f063dfd232d1ee206e7cdef38ca3d0924dfcc7d",
+    "edge-residual-64.torch-output.npy": "1d7c4aa38f921a63473c8551e52b345719ff976d3297102e12e2977c83db56f1",
+    "edge-standard-16.inputs.npz": "db7a57ecd28e5c2b8956ccbb9ae32e6dbfdfa4cacab695adac4b1746456b1fb8",
+    "edge-standard-16.onnx": "6688d7a9328486a86757a6242815df70de47776f18b784c2d9ec75fecd68e539",
+    "edge-standard-16.torch-output.npy": "d11412404d1428307763e5e620da9bbe959d102f3f3ed1ffde9ff398ab0ce824",
+    "edge-standard-160.inputs.npz": "e75103047c2add7889d918f0383c1e115cf11e9158b3a12db659e9184ed98f5c",
+    "edge-standard-160.onnx": "10b400ffdb3b05a72ee1eec83307f9d626dea1f35589466b615e9eb659f2f5f6",
+    "edge-standard-160.torch-output.npy": "95b5a3ef967e6e363332f3d732d0b0570fc6baa23593f981b3492ce4a136347f",
+    "edge-standard-64.inputs.npz": "33821a64db6ce7b861d8f64596aae1d455ad56c411c342b92e91d9617c680e19",
+    "edge-standard-64.onnx": "f7292aef84cac19037a880028de87e32e8196b8d198ef4604aa766166d05bf79",
+    "edge-standard-64.torch-output.npy": "d5026d5b6f09dcc9b229b7e5f7a55d826ab68b895f186ff881f8629e95c79b1a"
+  }
+}

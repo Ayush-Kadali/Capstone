@@ -2,7 +2,7 @@
 set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE="${CAPSTONE_TEST_PYTHON:-$(command -v python3)}"
 cmake --build build --parallel 2
 ctest --test-dir build --output-on-failure
 mkdir -p artifacts/segfault

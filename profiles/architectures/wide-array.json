@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "id": "wide-array",
+  "revision": 1,
+  "description": "Higher peak compute, larger tiles and launch overhead; an educational wide-array scenario.",
+  "evidence": {
+    "level": "hypothetical",
+    "source": "Educational design scenario; values chosen to expose compute, memory and launch tradeoffs. Not a named physical board.",
+    "hardware_validated": false
+  },
+  "cpu": {
+    "peak_gops": 30,
+    "bandwidth_gbps": 15,
+    "efficiency": [
+      0.3,
+      0.5,
+      0.8
+    ],
+    "dispatch_us": 0.2
+  },
+  "accelerator": {
+    "peak_gops": 3000,
+    "bandwidth_gbps": 40,
+    "efficiency": [
+      0.3,
+      0.5,
+      0.8
+    ],
+    "dispatch_us": 12,
+    "memory_bytes": 4194304,
+    "local_bytes": 65536,
+    "workspace_bytes": 4096,
+    "tile_mnk": [
+      64,
+      64,
+      32
+    ]
+  },
+  "link": {
+    "bandwidth_gbps": 4,
+    "transfer_us": 1,
+    "sync_us": 1
+  },
+  "support": {
+    "operators": [
+      "MatMul",
+      "MatMulRelu",
+      "Add",
+      "Relu",
+      "RowSum",
+      "Conv2D",
+      "MaxPool2D",
+      "AveragePool2D",
+      "GlobalAveragePool",
+      "Reshape"
+    ],
+    "max_tensor_bytes": 262144,
+    "conv_groups": "any"
+  }
+}

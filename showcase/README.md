@@ -6,6 +6,10 @@ SegFault 2026 · Boundary Conditions · Explainable compilers
 
 The runnable prototype shows how a backend capability decision changes graph placement, transfers, buffer allocations, and execution commands. It executes those commands, checks their output, and exports the compiler artifacts that explain the result.
 
+PlacementLens names this compiler hackathon component. The broader capstone has
+a wider scope and is not named PlacementLens; this guide covers the component's
+bounded first release.
+
 ## Run the whole demo
 
 Requirements: C++17 compiler, CMake 3.16+, and Python 3 for the CLI integration tests and report inspector. No third-party C++ libraries. Tested locally on macOS arm64 with AppleClang 17; Linux/Windows have not been verified yet.
@@ -78,7 +82,7 @@ explicit allocations + versioned commands
 output + original-graph reference comparison + host trace
 ```
 
-The small pass driver orchestrates these stages directly; it is not an LLVM/MLIR pass-plugin system. Each successful report contains input/output snapshots, changes, reasons, and consequences for the frontend and for each selected plan. Original node IDs survive fusion. The same lowered commands are exported and executed.
+The small pass driver orchestrates these stages directly; it is not an LLVM/MLIR pass-plugin system. Each selected-policy report contains input/output snapshots, changes, reasons, and consequences for the frontend and selected plans. `verify` records frontend snapshots and transfer/lowering history for each enumerated plan, without the selected-policy capability/placement narratives. Original node IDs survive fusion. The same lowered commands are exported and executed.
 
 The cost policy enumerates at most `2^12` assignments. It rejects capability-invalid or memory-infeasible plans, then chooses the lowest complete-plan modeled cost. This is a bounded modeled oracle, not an empirical measured oracle and not a new search algorithm. CPU-only and maximal-capability policies are comparison baselines. Equal modeled costs keep enumeration order deterministically.
 
@@ -109,7 +113,10 @@ add bias R D Y
 output Y
 ```
 
-Tensor values are row-major. Node syntax is `operation node_id operands... output`. Comments begin with `#`. Names use letters, digits, and underscores. The prototype supports a single declared output, at most 12 operations, at most 64 inputs, and at most 65,536 elements per tensor. All tensors are contiguous rank-two FP32. Add requires equal shapes; there is no broadcasting, implicit casting, dynamic shape support, ONNX frontend, or source-code execution.
+Tensor values are row-major. Node syntax is `operation node_id operands... output`. Comments begin with `#`. Names use letters, digits, and underscores. The prototype supports a single declared output, at most 64 operations (exhaustive search up to 12), at most 64 inputs, and at most 65,536 elements per tensor. Core storage is contiguous rank-two FP32; native CNN parameters describe logical NCHW tensors. Core Add requires equal shapes. The bounded ONNX frontend explicitly materializes constant bias broadcasting and handles Gemm, Conv, pooling and shape operations; see `docs/runtime/ONNX_FRONTEND.md`. Dynamic shapes, implicit casting and source-code execution are rejected. For more than 12 nodes use `verify --search bounded`, which reports retained candidates without claiming exhaustive coverage.
+
+CLI graph files must be valid UTF-8 and at most 16,000,000 bytes. Dimensions are
+positive unsigned decimal tokens; signed and fractional tokens are rejected.
 
 ## Runtime contract
 
@@ -120,6 +127,12 @@ Tensor values are row-major. Node syntax is `operation node_id operands... outpu
 - All allocations are retained until the execution ends. Reported peak device allocation is exact for this retention policy; it is not optimized liveness.
 - Failures raise an error; the runtime does not change datatypes, automatically replan, or claim successful execution.
 - Arithmetic uses FP32 kernels and an independent original-graph evaluator with double accumulation and FP32 results. Numerical checks use absolute and relative tolerance `1e-5`; cancellation-heavy or large reductions may need a more developed error policy later.
+- Nonfinite runtime or reference results fail with `E_NUMERIC`, including MatMul
+  overflow before fused ReLU. Finite numerical disagreement exits 2; parsing,
+  execution and I/O errors exit 1. Failed invocations do not refresh reports, so
+  check the exit status before using an older output file.
+- Measured host execution covers command processing and final output extraction;
+  it excludes graph validation, input-buffer setup, planning and reference checking.
 
 ## Evidence and next work
 

@@ -37,7 +37,10 @@ Testing/
 # Local profiling, tracing, and coverage output
 /artifacts/
 /coverage/
-/profiles/
+# Profiler dumps only; versioned target profiles (*.json) are source.
+/profiles/*
+!/profiles/*.json
+!/profiles/architectures/
 /traces/
 *.profraw
 *.profdata
@@ -62,3 +65,6 @@ Testing/
 
 # Standalone hackathon repository (its own git repo)
 /PlacementLens/
+
+# Dated local build trees
+/build-*/

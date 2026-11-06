@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "software-device-relu-on",
+  "description": "Illustrative host-executed software device with configurable ReLU capability.",
+  "target": {
+    "kind": "software-device",
+    "backend": "software"
+  },
+  "evidence": {
+    "level": "hypothetical",
+    "source": "Existing engine defaults; illustrative assumptions, not measurements of a physical accelerator.",
+    "hardware_validated": false
+  },
+  "tensor": {
+    "dtype": "f32",
+    "rank": 2,
+    "layout": "contiguous",
+    "max_elements": 65536
+  },
+  "operators": {
+    "MatMul": true,
+    "Add": true,
+    "Relu": true,
+    "RowSum": true,
+    "MatMulRelu": true
+  },
+  "memory": {
+    "device_bytes": 1048576,
+    "local_bytes": 32768,
+    "tile_size": 0
+  },
+  "costs": {
+    "transfer_fixed_ms": 1.3,
+    "bandwidth_bytes_per_ms": 1000000,
+    "launch_ms": 0.2,
+    "sync_ms": 0.05
+  }
+}
